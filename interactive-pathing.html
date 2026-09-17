@@ -1,0 +1,1230 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Interactive Pathing</title>
+<style>
+  :root {
+    --bg: #1e1f24;
+    --panel: #2a2c33;
+    --panel-alt: #33353d;
+    --canvas-a: #26272d;
+    --canvas-b: #202126;
+    --checker-a: #3a3c44;
+    --checker-b: #454750;
+    --selected-bg: #223349;
+    --border: #45474f;
+    --text: #e8e8ee;
+    --muted: #9297a8;
+    --label: #c7c9d4;
+    --legend: #b7b9c4;
+    --toast-bg: #111319;
+    --toast-text: #e8e8ee;
+    --explored-stroke: rgba(255,255,255,0.75);
+    --accent: #5b9dff;
+    --danger: #ff6b6b;
+    --good: #57d38c;
+  }
+  :root.light {
+    --bg: #eef1f5;
+    --panel: #ffffff;
+    --panel-alt: #e3e8ef;
+    --canvas-a: #e5e9ef;
+    --canvas-b: #d5dbe3;
+    --checker-a: #d8dee7;
+    --checker-b: #c8d0db;
+    --selected-bg: #dbeafe;
+    --border: #b8c1ce;
+    --text: #1f2937;
+    --muted: #5b6675;
+    --label: #374151;
+    --legend: #4b5563;
+    --toast-bg: #ffffff;
+    --toast-text: #1f2937;
+    --explored-stroke: rgba(31,41,55,0.85);
+    --accent: #2563eb;
+    --danger: #dc2626;
+    --good: #15803d;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: system-ui, Arial, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+  }
+  header {
+    padding: 10px 16px;
+    background: var(--panel);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+  header h1 { font-size: 18px; margin: 0; margin-right: 8px; }
+  main { flex: 1; display: flex; overflow: hidden; }
+  .sidebar {
+    width: 300px;
+    background: var(--panel);
+    border-right: 1px solid var(--border);
+    overflow-y: auto;
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    flex-shrink: 0;
+  }
+  .sidebar.right { border-right: none; border-left: 1px solid var(--border); }
+  .canvas-area {
+    flex: 1;
+    overflow: auto;
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    padding: 20px;
+    background: repeating-conic-gradient(var(--canvas-a) 0% 25%, var(--canvas-b) 0% 50%) 50% / 24px 24px;
+  }
+  #mapCanvas { image-rendering: pixelated; cursor: crosshair; box-shadow: 0 0 0 1px var(--border); }
+  fieldset { border: 1px solid var(--border); border-radius: 6px; padding: 10px; }
+  legend { font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: var(--legend); padding: 0 4px; }
+  label { font-size: 12px; color: var(--label); display: block; margin-bottom: 2px; }
+  input[type=number], input[type=text], select {
+    width: 100%; padding: 5px 6px; background: var(--panel-alt);
+    border: 1px solid var(--border); color: var(--text); border-radius: 4px;
+  }
+  button {
+    background: var(--panel-alt); color: var(--text); border: 1px solid var(--border);
+    border-radius: 4px; padding: 6px 10px; cursor: pointer; font-size: 13px;
+  }
+  button:hover { border-color: var(--accent); }
+  button:disabled { opacity: .5; cursor: not-allowed; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #0b1220; font-weight: 600; }
+  button.danger { border-color: var(--danger); color: var(--danger); }
+  .row { display: flex; gap: 8px; align-items: center; }
+  .row.wrap { flex-wrap: wrap; }
+  .tool-list { display: flex; flex-direction: column; gap: 4px; }
+  .tool-item {
+    display: flex; align-items: center; gap: 8px; padding: 5px 8px;
+    border-radius: 4px; border: 1px solid transparent; cursor: pointer;
+  }
+  .tool-item:hover { background: var(--panel-alt); }
+  .tool-item.selected { border-color: var(--accent); background: var(--selected-bg); }
+  .swatch {
+    width: 20px; height: 20px; border-radius: 4px;
+    border: 1px solid rgba(255,255,255,.25); flex-shrink: 0;
+  }
+  .swatch.empty { background: repeating-conic-gradient(#4b4d55 0% 25%, #33353d 0% 50%) 50% / 8px 8px; }
+  .tool-char { font-family: monospace; font-size: 12px; color: var(--muted); width: 14px; text-align: center; }
+  .tool-name { flex: 1; font-size: 13px; }
+  .stat-grid { display: grid; grid-template-columns: 1fr auto; gap: 4px 8px; font-size: 12px; }
+  .stat-grid div.k { color: var(--muted); }
+  .stat-grid div.v { text-align: right; font-variant-numeric: tabular-nums; }
+  .hint { font-size: 11px; color: var(--muted); line-height: 1.4; }
+  .saved-list { display: flex; flex-direction: column; gap: 4px; max-height: 240px; overflow-y: auto; }
+  .saved-item { display: flex; flex-direction: column; gap: 4px; padding: 6px; background: var(--panel-alt); border-radius: 4px; font-size: 12px; }
+  .saved-item .title { display: flex; align-items: center; gap: 6px; }
+  .saved-item .name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .saved-item .btns { display: flex; gap: 4px; }
+  .saved-item .btns button { padding: 2px 6px; font-size: 11px; }
+  .badge { display: inline-block; padding: 1px 6px; border-radius: 10px; font-size: 10px; background: var(--selected-bg); color: var(--accent); }
+  .badge.fail { background: #3a2323; color: var(--danger); }
+  .badge.ok { background: #1f3a2b; color: var(--good); }
+  #toast {
+    position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%);
+    background: var(--toast-bg); border: 1px solid var(--border); color: var(--toast-text);
+    padding: 8px 14px; border-radius: 6px; font-size: 13px; opacity: 0;
+    pointer-events: none; transition: opacity .2s ease; z-index: 999; max-width: 70vw;
+  }
+  #toast.show { opacity: 1; }
+  .file-btn { display: inline-block; }
+  .file-btn input[type=file] { display: none; }
+  #themeToggle { margin-left: auto; }
+  hr.sep { border: none; border-top: 1px solid var(--border); margin: 4px 0; }
+  #statusLine { font-size: 12px; padding: 4px 6px; border-radius: 4px; background: var(--panel-alt); }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Interactive Pathing</h1>
+  <button id="themeToggle" type="button" aria-pressed="false">Light mode</button>
+  <div class="row">
+    <label style="margin:0">Name</label>
+    <input type="text" id="mapNameInput" value="untitled" style="width:140px">
+  </div>
+  <div class="row">
+    <label style="margin:0">W</label>
+    <input type="number" id="widthInput" min="2" max="200" value="16" style="width:64px">
+    <label style="margin:0">H</label>
+    <input type="number" id="heightInput" min="2" max="200" value="16" style="width:64px">
+    <button id="newMapBtn">New</button>
+    <button id="resizeBtn">Resize</button>
+  </div>
+  <div class="row">
+    <label style="margin:0">Zoom</label>
+    <input type="range" id="zoomSlider" min="4" max="48" value="22">
+    <label style="margin:0"><input type="checkbox" id="gridLinesCheckbox" checked style="width:auto"> Grid lines</label>
+  </div>
+</header>
+
+<main>
+  <div class="sidebar">
+    <fieldset>
+      <legend>Palette / Tools</legend>
+      <div class="tool-list" id="toolList"></div>
+      <p class="hint">Click a tool then draw on the map. Only one start and one exit are allowed; placing a new one replaces the old.</p>
+    </fieldset>
+
+    <fieldset>
+      <legend>Save to Disk</legend>
+      <div class="row wrap">
+        <button id="exportPngBtn">Save as PNG</button>
+        <button id="exportTxtBtn">Save as Text</button>
+      </div>
+    </fieldset>
+
+    <fieldset>
+      <legend>Load from Disk</legend>
+      <div class="row wrap">
+        <label class="file-btn"><button type="button" onclick="document.getElementById('pngFileInput').click()">Load PNG</button>
+          <input type="file" id="pngFileInput" accept="image/png,image/*">
+        </label>
+        <label class="file-btn"><button type="button" onclick="document.getElementById('txtFileInput').click()">Load Text</button>
+          <input type="file" id="txtFileInput" accept=".txt,text/plain">
+        </label>
+      </div>
+    </fieldset>
+
+    <fieldset>
+      <legend>Saved Maps (localStorage)</legend>
+      <button id="saveMapBtn">Save Current Map</button>
+      <div class="saved-list" id="savedMapsList"></div>
+    </fieldset>
+
+    <fieldset>
+      <legend>Danger Zone</legend>
+      <button id="clearCanvasBtn">Clear Map</button>
+    </fieldset>
+  </div>
+
+  <div class="canvas-area">
+    <canvas id="mapCanvas" width="352" height="352"></canvas>
+  </div>
+
+  <div class="sidebar right">
+    <fieldset>
+      <legend>Solver</legend>
+      <label for="algorithmSelect">Algorithm</label>
+      <select id="algorithmSelect">
+        <optgroup label="Uninformed">
+          <option value="bfs">Breadth-First Search (BFS)</option>
+          <option value="dfs">Depth-First Search (DFS)</option>
+          <option value="ids">Iterative Deepening (ID)</option>
+          <option value="ucs">Uniform Cost Search (UCS)</option>
+        </optgroup>
+        <optgroup label="Informed">
+          <option value="greedy">Greedy Best-First</option>
+          <option value="astar">A*</option>
+        </optgroup>
+      </select>
+      <div id="heuristicRow" style="margin-top:8px">
+        <label for="heuristicSelect">Heuristic</label>
+        <select id="heuristicSelect">
+          <option value="euclidean">Euclidean distance to exit</option>
+          <option value="manhattan">Manhattan distance to exit</option>
+          <option value="nearestItem">Distance to nearest uncollected item</option>
+          <option value="itemCount">Number of uncollected items</option>
+        </select>
+      </div>
+      <div style="margin-top:8px">
+        <label for="refreshRateSlider">Refresh rate: <span id="refreshRateLabel">6</span>/sec</label>
+        <input type="range" id="refreshRateSlider" min="1" max="1000" value="6">
+      </div>
+      <div class="row" style="margin-top:10px">
+        <button id="solveBtn" class="primary">Solve</button>
+        <button id="stopBtn" disabled>Stop</button>
+        <button id="resetBtn">Reset</button>
+      </div>
+      <div id="statusLine" style="margin-top:8px">Idle.</div>
+    </fieldset>
+
+    <fieldset>
+      <legend>Stats</legend>
+      <div class="stat-grid">
+        <div class="k">States expanded</div><div class="v" id="statExpanded">0</div>
+        <div class="k">Max fringe size</div><div class="v" id="statFringe">0</div>
+        <div class="k">Current path cost</div><div class="v" id="statCost">0</div>
+        <div class="k">Current path length</div><div class="v" id="statLength">0</div>
+      </div>
+    </fieldset>
+
+    <fieldset>
+      <legend>Saved Runs (localStorage)</legend>
+      <div class="saved-list" id="savedRunsList"></div>
+      <p class="hint">Every completed or stopped run is saved automatically, including the map, settings, and outcome. Load one to inspect or continue from it with new settings.</p>
+    </fieldset>
+  </div>
+</main>
+
+<div id="toast"></div>
+
+<script>
+(function () {
+  'use strict';
+
+  // ================= Palette / cell types =================
+  var PALETTE = [
+    { ch: 's', name: 'Start', color: '#22c55e' },
+    { ch: 'e', name: 'Exit', color: '#8b0000' },
+    { ch: 'w', name: 'Wall', color: '#000000' },
+    { ch: 'o', name: 'Water (cost 3)', color: '#00e5ff' },
+    { ch: 'l', name: 'Lava (cost 1, lethal)', color: '#ff8c00' },
+    { ch: 'i', name: 'Item (cost 1)', color: '#a855f7' },
+    { ch: ' ', name: 'Empty (cost 1)', color: null }
+  ];
+  var PALETTE_BY_CHAR = {};
+  PALETTE.forEach(function (p) { PALETTE_BY_CHAR[p.ch] = p; });
+
+  function costOfCell(ch) { return ch === 'o' ? 3 : 1; }
+  function isLethal(ch) { return ch === 'l'; }
+
+  // ================= State =================
+  var state = {
+    width: 16,
+    height: 16,
+    grid: [],           // array of arrays of chars, grid[y][x]
+    pixelSize: 22,
+    gridLines: true,
+    tool: 's',
+    mode: 'edit'         // 'edit' | 'solving' | 'solved' | 'stopped'
+  };
+
+  var STORAGE_KEY = 'interactivePathing.runs.v1';
+  var MAP_STORAGE_KEY = 'interactivePathing.maps.v1';
+
+  function newGrid(w, h) {
+    var g = new Array(h);
+    for (var y = 0; y < h; y++) {
+      g[y] = new Array(w).fill(' ');
+    }
+    return g;
+  }
+
+  function initState(w, h) {
+    state.width = w;
+    state.height = h;
+    state.grid = newGrid(w, h);
+  }
+  initState(16, 16);
+
+  // ================= Visualization overlays =================
+  var viz = {
+    exploredCells: [],   // array of [x,y] in expansion order
+    pathCells: [],        // array of [x,y] from root to node currently being expanded
+    solutionCells: null,  // array of [x,y] once solved
+    solutionFound: false
+  };
+
+  function resetViz() {
+    viz.exploredCells = [];
+    viz.pathCells = [];
+    viz.solutionCells = null;
+    viz.solutionFound = false;
+  }
+
+  // ================= Canvas rendering =================
+  var canvas = document.getElementById('mapCanvas');
+  var ctx = canvas.getContext('2d');
+
+  var checkerPattern = (function () {
+    var pc = document.createElement('canvas');
+    pc.width = 16; pc.height = 16;
+    var pctx = pc.getContext('2d');
+    pctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--checker-a').trim();
+    pctx.fillRect(0, 0, 16, 16);
+    pctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--checker-b').trim();
+    pctx.fillRect(0, 0, 8, 8); pctx.fillRect(8, 8, 8, 8);
+    return pctx.createPattern(pc, 'repeat');
+  })();
+
+  function refreshCheckerPattern() {
+    var pc = document.createElement('canvas');
+    pc.width = 16; pc.height = 16;
+    var pctx = pc.getContext('2d');
+    pctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--checker-a').trim();
+    pctx.fillRect(0, 0, 16, 16);
+    pctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--checker-b').trim();
+    pctx.fillRect(0, 0, 8, 8); pctx.fillRect(8, 8, 8, 8);
+    checkerPattern = ctx.createPattern(pc, 'repeat');
+  }
+
+  function render() {
+    var ps = state.pixelSize;
+    canvas.width = state.width * ps;
+    canvas.height = state.height * ps;
+
+    ctx.fillStyle = checkerPattern;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    for (var y = 0; y < state.height; y++) {
+      for (var x = 0; x < state.width; x++) {
+        var ch = state.grid[y][x];
+        var pal = PALETTE_BY_CHAR[ch];
+        if (pal && pal.color) {
+          ctx.fillStyle = pal.color;
+          ctx.fillRect(x * ps, y * ps, ps, ps);
+        }
+      }
+    }
+
+    // Explored overlay: outline only, so the cell's contents (lava, water,
+    // item, etc.) stay fully visible underneath.
+    if (viz.exploredCells.length) {
+      var inset = Math.max(1, ps * 0.12);
+      ctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--explored-stroke').trim();
+      ctx.lineWidth = Math.max(1, ps * 0.08);
+      viz.exploredCells.forEach(function (c) {
+        ctx.strokeRect(c[0] * ps + inset, c[1] * ps + inset, ps - inset * 2, ps - inset * 2);
+      });
+    }
+
+    // Solution overlay.
+    if (viz.solutionCells) {
+      ctx.fillStyle = 'rgba(255,235,59,0.55)';
+      viz.solutionCells.forEach(function (c) {
+        ctx.fillRect(c[0] * ps, c[1] * ps, ps, ps);
+      });
+    }
+
+    if (state.gridLines && ps >= 4) {
+      ctx.strokeStyle = 'rgba(0,0,0,0.25)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      for (var gx = 0; gx <= state.width; gx++) { ctx.moveTo(gx * ps + 0.5, 0); ctx.lineTo(gx * ps + 0.5, canvas.height); }
+      for (var gy = 0; gy <= state.height; gy++) { ctx.moveTo(0, gy * ps + 0.5); ctx.lineTo(canvas.width, gy * ps + 0.5); }
+      ctx.stroke();
+    }
+
+    // Current expansion path line (black) drawn on top.
+    var line = viz.solutionCells && viz.solutionFound ? viz.solutionCells : viz.pathCells;
+    if (line && line.length > 1) {
+      ctx.strokeStyle = viz.solutionFound ? 'rgba(0,0,0,0.85)' : '#000000';
+      ctx.lineWidth = Math.max(2, ps / 8);
+      ctx.lineJoin = 'round';
+      ctx.beginPath();
+      line.forEach(function (c, i) {
+        var cx = c[0] * ps + ps / 2;
+        var cy = c[1] * ps + ps / 2;
+        if (i === 0) ctx.moveTo(cx, cy); else ctx.lineTo(cx, cy);
+      });
+      ctx.stroke();
+    }
+  }
+
+  // ================= Tool palette UI =================
+  var toolListEl = document.getElementById('toolList');
+  function renderToolList() {
+    toolListEl.innerHTML = '';
+    PALETTE.forEach(function (p) {
+      var item = document.createElement('div');
+      item.className = 'tool-item' + (state.tool === p.ch ? ' selected' : '');
+      var swatchClass = p.color ? '' : ' empty';
+      item.innerHTML =
+        '<div class="swatch' + swatchClass + '"' + (p.color ? ' style="background:' + p.color + '"' : '') + '></div>' +
+        '<div class="tool-char">' + (p.ch === ' ' ? '·' : p.ch) + '</div>' +
+        '<div class="tool-name">' + p.name + '</div>';
+      item.addEventListener('click', function () {
+        state.tool = p.ch;
+        renderToolList();
+      });
+      toolListEl.appendChild(item);
+    });
+  }
+
+  // ================= Painting =================
+  var isPainting = false;
+
+  function cellFromEvent(e) {
+    var rect = canvas.getBoundingClientRect();
+    var scaleX = canvas.width / rect.width;
+    var scaleY = canvas.height / rect.height;
+    var px = (e.clientX - rect.left) * scaleX;
+    var py = (e.clientY - rect.top) * scaleY;
+    var x = Math.floor(px / state.pixelSize);
+    var y = Math.floor(py / state.pixelSize);
+    if (x < 0 || y < 0 || x >= state.width || y >= state.height) return null;
+    return { x: x, y: y };
+  }
+
+  function clearAllOf(ch) {
+    for (var y = 0; y < state.height; y++) {
+      for (var x = 0; x < state.width; x++) {
+        if (state.grid[y][x] === ch) state.grid[y][x] = ' ';
+      }
+    }
+  }
+
+  function paintAt(e) {
+    if (state.mode !== 'edit') return;
+    var c = cellFromEvent(e);
+    if (!c) return;
+    var tool = e.button === 2 ? ' ' : state.tool;
+    if (tool === 's' || tool === 'e') clearAllOf(tool);
+    state.grid[c.y][c.x] = tool;
+    render();
+  }
+
+  canvas.addEventListener('contextmenu', function (e) { e.preventDefault(); });
+  canvas.addEventListener('mousedown', function (e) { isPainting = true; paintAt(e); });
+  window.addEventListener('mouseup', function () { isPainting = false; });
+  canvas.addEventListener('mousemove', function (e) { if (isPainting) paintAt(e); });
+
+  // ================= Toolbar =================
+  document.getElementById('newMapBtn').addEventListener('click', function () {
+    var w = parseInt(document.getElementById('widthInput').value, 10) || 16;
+    var h = parseInt(document.getElementById('heightInput').value, 10) || 16;
+    if (!confirm('Start a new ' + w + 'x' + h + ' map? This clears the current canvas.')) return;
+    setMode('edit');
+    initState(w, h);
+    resetViz();
+    document.getElementById('mapNameInput').value = 'untitled';
+    render();
+  });
+
+  document.getElementById('resizeBtn').addEventListener('click', function () {
+    var w = parseInt(document.getElementById('widthInput').value, 10) || state.width;
+    var h = parseInt(document.getElementById('heightInput').value, 10) || state.height;
+    var newG = newGrid(w, h);
+    var copyW = Math.min(w, state.width);
+    var copyH = Math.min(h, state.height);
+    for (var y = 0; y < copyH; y++) {
+      for (var x = 0; x < copyW; x++) newG[y][x] = state.grid[y][x];
+    }
+    state.width = w; state.height = h; state.grid = newG;
+    resetViz();
+    render();
+  });
+
+  document.getElementById('zoomSlider').addEventListener('input', function (e) {
+    state.pixelSize = parseInt(e.target.value, 10);
+    render();
+  });
+
+  document.getElementById('gridLinesCheckbox').addEventListener('change', function (e) {
+    state.gridLines = e.target.checked;
+    render();
+  });
+
+  var themeToggle = document.getElementById('themeToggle');
+  function applyTheme(light) {
+    document.documentElement.classList.toggle('light', light);
+    themeToggle.textContent = light ? 'Dark mode' : 'Light mode';
+    themeToggle.setAttribute('aria-pressed', light ? 'true' : 'false');
+    refreshCheckerPattern();
+    render();
+  }
+  themeToggle.addEventListener('click', function () {
+    var light = !document.documentElement.classList.contains('light');
+    try { localStorage.setItem('interactivePathing.theme', light ? 'light' : 'dark'); } catch (e) {}
+    applyTheme(light);
+  });
+
+  document.getElementById('clearCanvasBtn').addEventListener('click', function () {
+    if (!confirm('Clear all cells on the map?')) return;
+    state.grid = newGrid(state.width, state.height);
+    resetViz();
+    render();
+  });
+
+  // ================= Toast =================
+  var toastTimer = null;
+  function toast(msg) {
+    var el = document.getElementById('toast');
+    el.textContent = msg;
+    el.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () { el.classList.remove('show'); }, 2400);
+  }
+
+  // ================= Download helper =================
+  function downloadBlob(blob, filename) {
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url; a.download = filename;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+  }
+
+  function sanitizeFilename(name) {
+    return String(name || 'untitled').trim().replace(/[\\/:*?"<>|]+/g, '_') || 'untitled';
+  }
+
+  // ================= PNG export/import =================
+  document.getElementById('exportPngBtn').addEventListener('click', function () {
+    var out = document.createElement('canvas');
+    out.width = state.width; out.height = state.height;
+    var octx = out.getContext('2d');
+    var imgData = octx.createImageData(state.width, state.height);
+    for (var y = 0; y < state.height; y++) {
+      for (var x = 0; x < state.width; x++) {
+        var ch = state.grid[y][x];
+        var pal = PALETTE_BY_CHAR[ch];
+        var off = (y * state.width + x) * 4;
+        if (pal && pal.color) {
+          var rgb = hexToRgb(pal.color);
+          imgData.data[off] = rgb.r; imgData.data[off + 1] = rgb.g; imgData.data[off + 2] = rgb.b; imgData.data[off + 3] = 255;
+        } else {
+          imgData.data[off + 3] = 0;
+        }
+      }
+    }
+    octx.putImageData(imgData, 0, 0);
+    out.toBlob(function (blob) {
+      downloadBlob(blob, sanitizeFilename(mapName()) + '.png');
+      toast('PNG saved.');
+    });
+  });
+
+  function hexToRgb(hex) {
+    var m = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+    if (!m) return { r: 0, g: 0, b: 0 };
+    return { r: parseInt(m[1], 16), g: parseInt(m[2], 16), b: parseInt(m[3], 16) };
+  }
+
+  function nearestPaletteChar(r, g, b) {
+    var best = ' ', bestDist = Infinity;
+    PALETTE.forEach(function (p) {
+      if (!p.color) return;
+      var rgb = hexToRgb(p.color);
+      var d = (rgb.r - r) * (rgb.r - r) + (rgb.g - g) * (rgb.g - g) + (rgb.b - b) * (rgb.b - b);
+      if (d < bestDist) { bestDist = d; best = p.ch; }
+    });
+    return best;
+  }
+
+  document.getElementById('pngFileInput').addEventListener('change', function (e) {
+    var file = e.target.files[0];
+    if (!file) return;
+    var reader = new FileReader();
+    reader.onload = function (ev) {
+      var img = new Image();
+      img.onload = function () { importImage(img, baseName(file.name)); };
+      img.onerror = function () { toast('Could not load that image.'); };
+      img.src = ev.target.result;
+    };
+    reader.readAsDataURL(file);
+    e.target.value = '';
+  });
+
+  function baseName(filename) {
+    return String(filename || 'untitled').replace(/\.[^./\\]+$/, '') || 'untitled';
+  }
+
+  function importImage(img, name) {
+    var w = img.naturalWidth, h = img.naturalHeight;
+    if (w * h > 200 * 200) { toast('Image too large (max 200x200).'); return; }
+    var off = document.createElement('canvas');
+    off.width = w; off.height = h;
+    var octx = off.getContext('2d');
+    octx.drawImage(img, 0, 0);
+    var data = octx.getImageData(0, 0, w, h).data;
+
+    setMode('edit');
+    initState(w, h);
+    for (var y = 0; y < h; y++) {
+      for (var x = 0; x < w; x++) {
+        var o4 = (y * w + x) * 4;
+        var r = data[o4], g = data[o4 + 1], b = data[o4 + 2], a = data[o4 + 3];
+        state.grid[y][x] = a < 16 ? ' ' : nearestPaletteChar(r, g, b);
+      }
+    }
+    enforceSingleton('s'); enforceSingleton('e');
+    document.getElementById('widthInput').value = w;
+    document.getElementById('heightInput').value = h;
+    document.getElementById('mapNameInput').value = name || 'untitled';
+    resetViz();
+    render();
+    toast('Loaded PNG (' + w + 'x' + h + ').');
+  }
+
+  function enforceSingleton(ch) {
+    var seen = false;
+    for (var y = 0; y < state.height; y++) {
+      for (var x = 0; x < state.width; x++) {
+        if (state.grid[y][x] === ch) {
+          if (seen) state.grid[y][x] = ' '; else seen = true;
+        }
+      }
+    }
+  }
+
+  // ================= Text export/import =================
+  document.getElementById('exportTxtBtn').addEventListener('click', function () {
+    var lines = [state.width + ' ' + state.height];
+    for (var y = 0; y < state.height; y++) lines.push(state.grid[y].join(''));
+    var blob = new Blob([lines.join('\n') + '\n'], { type: 'text/plain' });
+    downloadBlob(blob, sanitizeFilename(mapName()) + '.txt');
+    toast('Text map saved.');
+  });
+
+  document.getElementById('txtFileInput').addEventListener('change', function (e) {
+    var file = e.target.files[0];
+    if (!file) return;
+    var reader = new FileReader();
+    reader.onload = function (ev) { importTextMap(ev.target.result, baseName(file.name)); };
+    reader.readAsText(file);
+    e.target.value = '';
+  });
+
+  function importTextMap(text, name) {
+    var lines = text.split(/\r\n|\r|\n/);
+    while (lines.length && lines[lines.length - 1] === '') lines.pop();
+    if (!lines.length) { toast('Empty file.'); return; }
+    var w, h, rows;
+    var headerMatch = /^(\d+)\s+(\d+)$/.exec(lines[0].trim());
+    if (headerMatch) {
+      w = parseInt(headerMatch[1], 10);
+      h = parseInt(headerMatch[2], 10);
+      rows = lines.slice(1, 1 + h);
+    } else {
+      rows = lines;
+      w = 0;
+      rows.forEach(function (l) { w = Math.max(w, l.length); });
+      h = rows.length;
+    }
+    var validChars = Object.keys(PALETTE_BY_CHAR);
+    setMode('edit');
+    initState(w, h);
+    for (var y = 0; y < h; y++) {
+      var row = rows[y] || '';
+      for (var x = 0; x < w; x++) {
+        var ch = x < row.length ? row[x] : ' ';
+        state.grid[y][x] = validChars.indexOf(ch) >= 0 ? ch : ' ';
+      }
+    }
+    enforceSingleton('s'); enforceSingleton('e');
+    document.getElementById('widthInput').value = w;
+    document.getElementById('heightInput').value = h;
+    document.getElementById('mapNameInput').value = name || 'untitled';
+    resetViz();
+    render();
+    toast('Loaded text map (' + w + 'x' + h + ').');
+  }
+
+  function mapName() {
+    return (document.getElementById('mapNameInput').value || 'untitled').trim() || 'untitled';
+  }
+  document.getElementById('mapNameInput').addEventListener('change', function (e) {
+    e.target.value = mapName();
+  });
+
+  // ================= Priority queue (binary min-heap) =================
+  function PriorityQueue(compare) {
+    this.items = [];
+    this.compare = compare;
+  }
+  PriorityQueue.prototype.size = function () { return this.items.length; };
+  PriorityQueue.prototype.push = function (item) {
+    var a = this.items;
+    a.push(item);
+    var i = a.length - 1;
+    while (i > 0) {
+      var parent = (i - 1) >> 1;
+      if (this.compare(a[i], a[parent]) < 0) { var t = a[i]; a[i] = a[parent]; a[parent] = t; i = parent; }
+      else break;
+    }
+  };
+  PriorityQueue.prototype.pop = function () {
+    var a = this.items;
+    var top = a[0];
+    var last = a.pop();
+    if (a.length) {
+      a[0] = last;
+      var i = 0;
+      while (true) {
+        var l = 2 * i + 1, r = 2 * i + 2, smallest = i;
+        if (l < a.length && this.compare(a[l], a[smallest]) < 0) smallest = l;
+        if (r < a.length && this.compare(a[r], a[smallest]) < 0) smallest = r;
+        if (smallest === i) break;
+        var t = a[i]; a[i] = a[smallest]; a[smallest] = t; i = smallest;
+      }
+    }
+    return top;
+  };
+
+  // ================= Search problem setup =================
+  function buildProblem() {
+    var start = null, exit = null;
+    var itemPositions = [];
+    for (var y = 0; y < state.height; y++) {
+      for (var x = 0; x < state.width; x++) {
+        var ch = state.grid[y][x];
+        if (ch === 's') { if (start) return { error: 'More than one start cell found.' }; start = { x: x, y: y }; }
+        else if (ch === 'e') { if (exit) return { error: 'More than one exit cell found.' }; exit = { x: x, y: y }; }
+        else if (ch === 'i') itemPositions.push({ x: x, y: y });
+      }
+    }
+    if (!start) return { error: 'The map needs exactly one start cell.' };
+    if (!exit) return { error: 'The map needs exactly one exit cell.' };
+    if (itemPositions.length > 30) return { error: 'Too many items (max 30 supported).' };
+
+    var itemIndexByPos = {};
+    itemPositions.forEach(function (p, i) { itemIndexByPos[p.x + ',' + p.y] = i; });
+    var fullMask = itemPositions.length ? (Math.pow(2, itemPositions.length) - 1) : 0;
+
+    return {
+      start: start, exit: exit, itemPositions: itemPositions,
+      itemIndexByPos: itemIndexByPos, fullMask: fullMask, totalItems: itemPositions.length
+    };
+  }
+
+  function cellChar(x, y) { return state.grid[y][x]; }
+  function inBounds(x, y) { return x >= 0 && y >= 0 && x < state.width && y < state.height; }
+
+  function makeRoot(problem) {
+    return { x: problem.start.x, y: problem.start.y, mask: 0, cost: 0, depth: 0, parent: null, dead: false };
+  }
+
+  function stateKey(node) { return node.x + '_' + node.y + '_' + node.mask; }
+
+  function isInAncestry(node, key) {
+    var cur = node;
+    while (cur) { if (stateKey(cur) === key) return true; cur = cur.parent; }
+    return false;
+  }
+
+  var DIRS = [[0, -1], [0, 1], [-1, 0], [1, 0]];
+
+  function successors(node, problem, depthLimit) {
+    if (node.dead) return [];
+    var out = [];
+    for (var d = 0; d < DIRS.length; d++) {
+      var nx = node.x + DIRS[d][0], ny = node.y + DIRS[d][1];
+      if (!inBounds(nx, ny)) continue;
+      var ch = cellChar(nx, ny);
+      if (ch === 'w') continue;
+      var newMask = node.mask;
+      if (ch === 'i') {
+        var idx = problem.itemIndexByPos[nx + ',' + ny];
+        if (idx !== undefined) newMask = newMask | (1 << idx);
+      }
+      var child = {
+        x: nx, y: ny, mask: newMask, cost: node.cost + costOfCell(ch),
+        depth: node.depth + 1, parent: node, dead: isLethal(ch)
+      };
+      if (depthLimit !== undefined && child.depth > depthLimit) continue;
+      if (isInAncestry(node, stateKey(child))) continue;
+      out.push(child);
+    }
+    return out;
+  }
+
+  function isGoal(node, problem) {
+    return node.x === problem.exit.x && node.y === problem.exit.y && node.mask === problem.fullMask;
+  }
+
+  function pathToNode(node) {
+    var path = [];
+    var cur = node;
+    while (cur) { path.unshift([cur.x, cur.y]); cur = cur.parent; }
+    return path;
+  }
+
+  // ================= Heuristics =================
+  function heuristic(node, problem, kind) {
+    var dx = node.x - problem.exit.x, dy = node.y - problem.exit.y;
+    if (kind === 'euclidean') return Math.hypot(dx, dy);
+    if (kind === 'manhattan') return Math.abs(dx) + Math.abs(dy);
+    if (kind === 'itemCount') {
+      var remaining = 0;
+      for (var i = 0; i < problem.totalItems; i++) if (!(node.mask & (1 << i))) remaining++;
+      return remaining;
+    }
+    if (kind === 'nearestItem') {
+      var best = Infinity;
+      for (var j = 0; j < problem.totalItems; j++) {
+        if (node.mask & (1 << j)) continue;
+        var p = problem.itemPositions[j];
+        var dist = Math.abs(node.x - p.x) + Math.abs(node.y - p.y);
+        if (dist < best) best = dist;
+      }
+      return best === Infinity ? 0 : best;
+    }
+    return 0;
+  }
+
+  // ================= Search generators =================
+  // Each generator yields { node, statesExpanded, maxFringe, fringeSize, goal, iteration? }
+  // and completes (done:true) when the fringe is exhausted without success.
+
+  function* fifoLifoSearch(problem, root, isFifo) {
+    var arr = [root];
+    var head = 0;
+    var statesExpanded = 0, maxFringe = 1;
+    while (isFifo ? head < arr.length : arr.length > 0) {
+      var fringeSize = isFifo ? (arr.length - head) : arr.length;
+      maxFringe = Math.max(maxFringe, fringeSize);
+      var node = isFifo ? arr[head++] : arr.pop();
+      statesExpanded++;
+      var goal = isGoal(node, problem);
+      yield { node: node, statesExpanded: statesExpanded, maxFringe: maxFringe, fringeSize: isFifo ? (arr.length - head) : arr.length, goal: goal };
+      if (goal) return;
+      var kids = successors(node, problem);
+      for (var i = 0; i < kids.length; i++) arr.push(kids[i]);
+    }
+  }
+
+  function* prioritySearch(problem, root, keyFn) {
+    var seq = 0;
+    var pq = new PriorityQueue(function (a, b) {
+      if (a.key !== b.key) return a.key - b.key;
+      return a.seq - b.seq;
+    });
+    pq.push({ node: root, key: keyFn(root), seq: seq++ });
+    var statesExpanded = 0, maxFringe = 1;
+    while (pq.size() > 0) {
+      maxFringe = Math.max(maxFringe, pq.size());
+      var entry = pq.pop();
+      var node = entry.node;
+      statesExpanded++;
+      var goal = isGoal(node, problem);
+      yield { node: node, statesExpanded: statesExpanded, maxFringe: maxFringe, fringeSize: pq.size(), goal: goal };
+      if (goal) return;
+      var kids = successors(node, problem);
+      for (var i = 0; i < kids.length; i++) pq.push({ node: kids[i], key: keyFn(kids[i]), seq: seq++ });
+    }
+  }
+
+  function* iterativeDeepeningSearch(problem, root) {
+    var maxPossibleDepth = state.width * state.height * (problem.totalItems + 1) + 2;
+    var totalExpanded = 0, overallMaxFringe = 0;
+    for (var limit = 0; limit <= maxPossibleDepth; limit++) {
+      var arr = [root];
+      var reachedLimit = false;
+      while (arr.length > 0) {
+        overallMaxFringe = Math.max(overallMaxFringe, arr.length);
+        var node = arr.pop();
+        totalExpanded++;
+        var goal = isGoal(node, problem);
+        yield { node: node, statesExpanded: totalExpanded, maxFringe: overallMaxFringe, fringeSize: arr.length, goal: goal, iteration: limit };
+        if (goal) return;
+        if (node.depth === limit) { reachedLimit = true; continue; }
+        var kids = successors(node, problem, limit);
+        if (kids.length) reachedLimit = true;
+        for (var i = 0; i < kids.length; i++) arr.push(kids[i]);
+      }
+      if (!reachedLimit) return; // search space fully exhausted, no solution exists
+    }
+  }
+
+  function createSearchGenerator(algorithm, heuristicKind, problem, root) {
+    switch (algorithm) {
+      case 'bfs': return fifoLifoSearch(problem, root, true);
+      case 'dfs': return fifoLifoSearch(problem, root, false);
+      case 'ids': return iterativeDeepeningSearch(problem, root);
+      case 'ucs': return prioritySearch(problem, root, function (n) { return n.cost; });
+      case 'greedy': return prioritySearch(problem, root, function (n) { return heuristic(n, problem, heuristicKind); });
+      case 'astar': return prioritySearch(problem, root, function (n) { return n.cost + heuristic(n, problem, heuristicKind); });
+    }
+  }
+
+  // ================= Run driver =================
+  var run = {
+    timer: null,
+    gen: null,
+    problem: null,
+    lastNode: null,
+    statesExpanded: 0,
+    maxFringe: 0,
+    algorithm: null,
+    heuristic: null,
+    refreshRate: 6
+  };
+
+  function setMode(mode) {
+    state.mode = mode;
+    var editing = mode === 'edit';
+    document.getElementById('solveBtn').disabled = !editing;
+    document.getElementById('stopBtn').disabled = mode !== 'solving';
+    document.getElementById('resetBtn').disabled = editing;
+    ['newMapBtn', 'resizeBtn', 'clearCanvasBtn', 'pngFileInput', 'txtFileInput', 'exportPngBtn', 'exportTxtBtn', 'saveMapBtn'].forEach(function (id) {
+      var el = document.getElementById(id);
+      if (el) el.disabled = !editing;
+    });
+  }
+
+  function setStatus(text) { document.getElementById('statusLine').textContent = text; }
+
+  function updateStats(info) {
+    document.getElementById('statExpanded').textContent = info.statesExpanded;
+    document.getElementById('statFringe').textContent = info.maxFringe;
+    document.getElementById('statCost').textContent = info.node.cost;
+    document.getElementById('statLength').textContent = info.node.depth;
+  }
+
+  document.getElementById('algorithmSelect').addEventListener('change', function () {
+    var informed = this.value === 'greedy' || this.value === 'astar';
+    document.getElementById('heuristicRow').style.display = informed ? 'block' : 'none';
+  });
+  document.getElementById('algorithmSelect').dispatchEvent(new Event('change'));
+
+  document.getElementById('refreshRateSlider').addEventListener('input', function (e) {
+    run.refreshRate = parseInt(e.target.value, 10);
+    document.getElementById('refreshRateLabel').textContent = run.refreshRate;
+    if (run.timer) { clearInterval(run.timer); startTimer(); }
+  });
+
+  function startTimer() {
+    run.timer = setInterval(stepSolve, Math.max(1, Math.round(1000 / run.refreshRate)));
+  }
+
+  document.getElementById('solveBtn').addEventListener('click', function () {
+    var problem = buildProblem();
+    if (problem.error) { toast(problem.error); return; }
+    run.problem = problem;
+    run.algorithm = document.getElementById('algorithmSelect').value;
+    run.heuristic = document.getElementById('heuristicSelect').value;
+    run.refreshRate = parseInt(document.getElementById('refreshRateSlider').value, 10);
+    run.statesExpanded = 0;
+    run.maxFringe = 0;
+    run.lastNode = null;
+    resetViz();
+    setMode('solving');
+    setStatus('Solving with ' + labelForAlgorithm(run.algorithm) + '\u2026');
+    var root = makeRoot(problem);
+    run.gen = createSearchGenerator(run.algorithm, run.heuristic, problem, root);
+    startTimer();
+  });
+
+  document.getElementById('stopBtn').addEventListener('click', function () {
+    if (run.timer) { clearInterval(run.timer); run.timer = null; }
+    setMode('stopped');
+    setStatus('Stopped by user.');
+    saveRun(false);
+  });
+
+  document.getElementById('resetBtn').addEventListener('click', function () {
+    if (run.timer) { clearInterval(run.timer); run.timer = null; }
+    resetViz();
+    setMode('edit');
+    setStatus('Idle.');
+    render();
+  });
+
+  function labelForAlgorithm(a) {
+    return { bfs: 'BFS', dfs: 'DFS', ids: 'Iterative Deepening', ucs: 'UCS', greedy: 'Greedy', astar: 'A*' }[a] || a;
+  }
+
+  function stepSolve() {
+    var r = run.gen.next();
+    if (r.done) {
+      clearInterval(run.timer); run.timer = null;
+      setMode('stopped');
+      setStatus('No solution found (fringe exhausted).');
+      saveRun(false);
+      return;
+    }
+    var info = r.value;
+    run.statesExpanded = info.statesExpanded;
+    run.maxFringe = info.maxFringe;
+    run.lastNode = info.node;
+    updateStats(info);
+
+    if (info.iteration !== undefined && !info.goal) {
+      viz.exploredCells = []; // ID restarts each depth iteration
+    }
+    viz.exploredCells.push([info.node.x, info.node.y]);
+    viz.pathCells = pathToNode(info.node);
+
+    if (info.goal) {
+      clearInterval(run.timer); run.timer = null;
+      viz.solutionCells = pathToNode(info.node);
+      viz.solutionFound = true;
+      setMode('solved');
+      setStatus('Solved! Cost ' + info.node.cost + ', length ' + (info.node.depth) + '.');
+      saveRun(true);
+    }
+    render();
+  }
+
+  // ================= Saved runs (localStorage) =================
+  function getSavedRuns() {
+    try { return JSON.parse(localStorage.getItem(STORAGE_KEY)) || []; }
+    catch (e) { return []; }
+  }
+  function setSavedRuns(list) { localStorage.setItem(STORAGE_KEY, JSON.stringify(list)); }
+
+  function getSavedMaps() {
+    try { return JSON.parse(localStorage.getItem(MAP_STORAGE_KEY)) || []; }
+    catch (e) { return []; }
+  }
+  function setSavedMaps(list) { localStorage.setItem(MAP_STORAGE_KEY, JSON.stringify(list)); }
+
+  function currentMapData() {
+    var rows = [];
+    for (var y = 0; y < state.height; y++) rows.push(state.grid[y].join(''));
+    return { width: state.width, height: state.height, rows: rows };
+  }
+
+  document.getElementById('saveMapBtn').addEventListener('click', function () {
+    var name = mapName();
+    var list = getSavedMaps().filter(function (entry) { return entry.name !== name; });
+    list.push({ name: name, savedAt: Date.now(), map: currentMapData() });
+    if (list.length > 100) list = list.slice(list.length - 100);
+    try {
+      setSavedMaps(list);
+      renderSavedMaps();
+      toast('Map saved locally.');
+    } catch (e) {
+      toast('Could not save map (storage may be full).');
+    }
+  });
+
+  function renderSavedMaps() {
+    var list = getSavedMaps();
+    var el = document.getElementById('savedMapsList');
+    el.innerHTML = '';
+    if (!list.length) { el.innerHTML = '<p class="hint">No saved maps yet.</p>'; return; }
+    list.slice().reverse().forEach(function (entry) {
+      var idx = list.indexOf(entry);
+      var item = document.createElement('div');
+      item.className = 'saved-item';
+      item.innerHTML =
+        '<div class="title"><div class="name" title="' + escapeHtml(entry.name) + '">' + escapeHtml(entry.name) + '</div></div>' +
+        '<div class="hint">' + new Date(entry.savedAt).toLocaleString() + ' \u00b7 ' + entry.map.width + 'x' + entry.map.height + '</div>' +
+        '<div class="btns"><button data-act="load">Load</button><button data-act="del" class="danger">Delete</button></div>';
+      item.querySelector('[data-act=load]').addEventListener('click', function () { loadSavedMap(idx); });
+      item.querySelector('[data-act=del]').addEventListener('click', function () {
+        if (!confirm('Delete this saved map?')) return;
+        var saved = getSavedMaps(); saved.splice(idx, 1); setSavedMaps(saved); renderSavedMaps();
+      });
+      el.appendChild(item);
+    });
+  }
+
+  function loadSavedMap(idx) {
+    var list = getSavedMaps();
+    var entry = list[idx];
+    if (!entry) return;
+    if (run.timer) { clearInterval(run.timer); run.timer = null; }
+    state.width = entry.map.width;
+    state.height = entry.map.height;
+    state.grid = entry.map.rows.map(function (row) { return row.split(''); });
+    document.getElementById('widthInput').value = state.width;
+    document.getElementById('heightInput').value = state.height;
+    document.getElementById('mapNameInput').value = entry.name;
+    resetViz();
+    setMode('edit');
+    setStatus('Loaded saved map: ' + entry.name);
+    render();
+    toast('Map loaded.');
+  }
+
+  function saveRun(success) {
+    var list = getSavedRuns();
+    var rows = [];
+    for (var y = 0; y < state.height; y++) rows.push(state.grid[y].join(''));
+    list.push({
+      name: mapName() + ' \u2014 ' + labelForAlgorithm(run.algorithm) + (success ? '' : ' (incomplete)'),
+      savedAt: Date.now(),
+      map: { width: state.width, height: state.height, rows: rows },
+      settings: { algorithm: run.algorithm, heuristic: run.heuristic, refreshRate: run.refreshRate },
+      outcome: {
+        success: success,
+        statesExpanded: run.statesExpanded,
+        maxFringe: run.maxFringe,
+        pathCost: run.lastNode ? run.lastNode.cost : 0,
+        pathLength: run.lastNode ? run.lastNode.depth : 0,
+        exploredCells: viz.exploredCells,
+        solutionCells: viz.solutionCells
+      }
+    });
+    if (list.length > 100) list = list.slice(list.length - 100);
+    try { setSavedRuns(list); } catch (e) { toast('Could not save run (storage may be full).'); }
+    renderSavedRuns();
+  }
+
+  function renderSavedRuns() {
+    var list = getSavedRuns();
+    var el = document.getElementById('savedRunsList');
+    el.innerHTML = '';
+    if (!list.length) { el.innerHTML = '<p class="hint">No saved runs yet.</p>'; return; }
+    list.slice().reverse().forEach(function (entry) {
+      var idx = list.indexOf(entry);
+      var item = document.createElement('div');
+      item.className = 'saved-item';
+      var date = new Date(entry.savedAt).toLocaleString();
+      var badge = entry.outcome.success ? '<span class="badge ok">solved</span>' : '<span class="badge fail">no solution</span>';
+      item.innerHTML =
+        '<div class="title"><div class="name" title="' + escapeHtml(entry.name) + '">' + escapeHtml(entry.name) + '</div>' + badge + '</div>' +
+        '<div class="hint">' + date + ' \u00b7 expanded ' + entry.outcome.statesExpanded + ' \u00b7 cost ' + entry.outcome.pathCost + '</div>' +
+        '<div class="btns"><button data-act="load">Load</button><button data-act="del" class="danger">Delete</button></div>';
+      item.querySelector('[data-act=load]').addEventListener('click', function () { loadRun(idx); });
+      item.querySelector('[data-act=del]').addEventListener('click', function () {
+        if (!confirm('Delete this saved run?')) return;
+        var l = getSavedRuns(); l.splice(idx, 1); setSavedRuns(l); renderSavedRuns();
+      });
+      el.appendChild(item);
+    });
+  }
+
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+
+  function loadRun(idx) {
+    var list = getSavedRuns();
+    var entry = list[idx];
+    if (!entry) return;
+    if (run.timer) { clearInterval(run.timer); run.timer = null; }
+    state.width = entry.map.width;
+    state.height = entry.map.height;
+    state.grid = entry.map.rows.map(function (row) { return row.split(''); });
+    document.getElementById('widthInput').value = state.width;
+    document.getElementById('heightInput').value = state.height;
+    document.getElementById('algorithmSelect').value = entry.settings.algorithm;
+    document.getElementById('algorithmSelect').dispatchEvent(new Event('change'));
+    document.getElementById('heuristicSelect').value = entry.settings.heuristic;
+    document.getElementById('refreshRateSlider').value = entry.settings.refreshRate;
+    document.getElementById('refreshRateLabel').textContent = entry.settings.refreshRate;
+    run.refreshRate = entry.settings.refreshRate;
+    run.algorithm = entry.settings.algorithm;
+    run.statesExpanded = entry.outcome.statesExpanded;
+    run.maxFringe = entry.outcome.maxFringe;
+    run.lastNode = { cost: entry.outcome.pathCost, depth: entry.outcome.pathLength };
+
+    resetViz();
+    viz.exploredCells = entry.outcome.exploredCells || [];
+    viz.solutionCells = entry.outcome.solutionCells || null;
+    viz.solutionFound = !!entry.outcome.solutionCells;
+    viz.pathCells = viz.solutionCells || [];
+
+    setMode(entry.outcome.success ? 'solved' : 'stopped');
+    setStatus('Loaded saved run: ' + entry.name);
+    document.getElementById('statExpanded').textContent = entry.outcome.statesExpanded;
+    document.getElementById('statFringe').textContent = entry.outcome.maxFringe;
+    document.getElementById('statCost').textContent = entry.outcome.pathCost;
+    document.getElementById('statLength').textContent = entry.outcome.pathLength;
+    render();
+    toast('Loaded run.');
+  }
+
+  // ================= Init =================
+  renderToolList();
+  renderSavedMaps();
+  renderSavedRuns();
+  var savedTheme = null;
+  try { savedTheme = localStorage.getItem('interactivePathing.theme'); } catch (e) {}
+  applyTheme(savedTheme === 'light');
+  setMode('edit');
+})();
+</script>
+</body>
+</html>
