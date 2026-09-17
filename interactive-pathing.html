@@ -260,6 +260,7 @@
         <div class="k">Max fringe size</div><div class="v" id="statFringe">0</div>
         <div class="k">Current path cost</div><div class="v" id="statCost">0</div>
         <div class="k">Current path length</div><div class="v" id="statLength">0</div>
+        <div class="k">Solution actions</div><div class="v" id="statActions">-</div>
       </div>
     </fieldset>
 
@@ -835,6 +836,19 @@
     return path;
   }
 
+  function actionsFromPath(path) {
+    var actions = '';
+    for (var i = 1; i < path.length; i++) {
+      var dx = path[i][0] - path[i - 1][0];
+      var dy = path[i][1] - path[i - 1][1];
+      if (dx === -1) actions += 'l';
+      else if (dx === 1) actions += 'r';
+      else if (dy === -1) actions += 'u';
+      else if (dy === 1) actions += 'd';
+    }
+    return actions;
+  }
+
   // ================= Heuristics =================
   function heuristic(node, problem, kind) {
     var dx = node.x - problem.exit.x, dy = node.y - problem.exit.y;
@@ -965,6 +979,7 @@
     document.getElementById('statFringe').textContent = info.maxFringe;
     document.getElementById('statCost').textContent = info.node.cost;
     document.getElementById('statLength').textContent = info.node.depth;
+    document.getElementById('statActions').textContent = actionsFromPath(pathToNode(info.node)) || '-';
   }
 
   document.getElementById('algorithmSelect').addEventListener('change', function () {
@@ -1140,6 +1155,7 @@
         maxFringe: run.maxFringe,
         pathCost: run.lastNode ? run.lastNode.cost : 0,
         pathLength: run.lastNode ? run.lastNode.depth : 0,
+        actionSequence: viz.solutionCells ? actionsFromPath(viz.solutionCells) : (run.lastNode ? actionsFromPath(pathToNode(run.lastNode)) : ''),
         exploredCells: viz.exploredCells,
         solutionCells: viz.solutionCells
       }
@@ -1212,6 +1228,7 @@
     document.getElementById('statFringe').textContent = entry.outcome.maxFringe;
     document.getElementById('statCost').textContent = entry.outcome.pathCost;
     document.getElementById('statLength').textContent = entry.outcome.pathLength;
+    document.getElementById('statActions').textContent = entry.outcome.actionSequence || (entry.outcome.solutionCells ? actionsFromPath(entry.outcome.solutionCells) : '-');
     render();
     toast('Loaded run.');
   }
