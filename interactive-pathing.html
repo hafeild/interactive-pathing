@@ -155,7 +155,7 @@
   <button id="themeToggle" type="button" aria-pressed="false">Light mode</button>
   <div class="row">
     <label style="margin:0">Name</label>
-    <input type="text" id="mapNameInput" value="untitled" style="width:140px">
+    <input type="text" id="mapNameInput" default-value="untitled" value="untitled" style="width:140px">
   </div>
   <div class="row">
     <label style="margin:0">W</label>
@@ -204,6 +204,7 @@
       <legend>Saved Maps (localStorage)</legend>
       <button id="saveMapBtn">Save Current Map</button>
       <div class="saved-list" id="savedMapsList"></div>
+      <br/>
       <button id="clearMapsBtn" class="danger">Clear all saved maps</button>
     </fieldset>
 
@@ -269,6 +270,7 @@
       <legend>Saved Runs (localStorage)</legend>
       <div class="saved-list" id="savedRunsList"></div>
       <p class="hint">Every completed or stopped run is saved automatically, including the map, settings, and outcome. Load one to inspect or continue from it with new settings.</p>
+      <br/>
       <button id="clearRunsBtn" class="danger">Clear all saved runs</button>
     </fieldset>
   </div>
@@ -324,6 +326,8 @@
     state.grid = newGrid(w, h);
   }
   initState(16, 16);
+
+  document.getElementById('mapNameInput').value = document.getElementById('mapNameInput').getAttribute('default-value');
 
   // ================= Visualization overlays =================
   var viz = {
@@ -988,6 +992,7 @@
   document.getElementById('algorithmSelect').addEventListener('change', function () {
     var informed = this.value === 'greedy' || this.value === 'astar';
     document.getElementById('heuristicRow').style.display = informed ? 'block' : 'none';
+    reset();
   });
   document.getElementById('algorithmSelect').dispatchEvent(new Event('change'));
 
@@ -1028,11 +1033,15 @@
 
   document.getElementById('resetBtn').addEventListener('click', function () {
     if (run.timer) { clearInterval(run.timer); run.timer = null; }
+    reset();
+  });
+
+  function reset() {
     resetViz();
     setMode('edit');
     setStatus('Idle.');
     render();
-  });
+  }
 
   function labelForAlgorithm(a) {
     return { bfs: 'BFS', dfs: 'DFS', ids: 'Iterative Deepening', ucs: 'UCS', greedy: 'Greedy', astar: 'A*' }[a] || a;
