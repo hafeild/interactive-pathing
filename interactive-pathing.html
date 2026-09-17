@@ -996,6 +996,8 @@
   });
   document.getElementById('algorithmSelect').dispatchEvent(new Event('change'));
 
+  document.getElementById('heuristicSelect').addEventListener('change', function () { reset(); });
+
   document.getElementById('refreshRateSlider').addEventListener('input', function (e) {
     run.refreshRate = parseInt(e.target.value, 10);
     document.getElementById('refreshRateLabel').textContent = run.refreshRate;
