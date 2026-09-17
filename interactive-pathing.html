@@ -167,7 +167,7 @@
   </div>
   <div class="row">
     <label style="margin:0">Zoom</label>
-    <input type="range" id="zoomSlider" min="4" max="48" value="22">
+    <input type="range" id="zoomSlider" min="4" max="100" value="22">
     <label style="margin:0"><input type="checkbox" id="gridLinesCheckbox" checked style="width:auto"> Grid lines</label>
   </div>
 </header>
@@ -204,6 +204,7 @@
       <legend>Saved Maps (localStorage)</legend>
       <button id="saveMapBtn">Save Current Map</button>
       <div class="saved-list" id="savedMapsList"></div>
+      <button id="clearMapsBtn" class="danger">Clear all saved maps</button>
     </fieldset>
 
     <fieldset>
@@ -268,6 +269,7 @@
       <legend>Saved Runs (localStorage)</legend>
       <div class="saved-list" id="savedRunsList"></div>
       <p class="hint">Every completed or stopped run is saved automatically, including the map, settings, and outcome. Load one to inspect or continue from it with new settings.</p>
+      <button id="clearRunsBtn" class="danger">Clear all saved runs</button>
     </fieldset>
   </div>
 </main>
@@ -365,6 +367,7 @@
   }
 
   function render() {
+    state.pixelSize = parseInt(document.getElementById('zoomSlider').value, 10);
     var ps = state.pixelSize;
     canvas.width = state.width * ps;
     canvas.height = state.height * ps;
@@ -1146,6 +1149,7 @@
     for (var y = 0; y < state.height; y++) rows.push(state.grid[y].join(''));
     list.push({
       name: mapName() + ' \u2014 ' + labelForAlgorithm(run.algorithm) + (success ? '' : ' (incomplete)'),
+      originalName: mapName(),
       savedAt: Date.now(),
       map: { width: state.width, height: state.height, rows: rows },
       settings: { algorithm: run.algorithm, heuristic: run.heuristic, refreshRate: run.refreshRate },
@@ -1210,6 +1214,7 @@
     document.getElementById('heuristicSelect').value = entry.settings.heuristic;
     document.getElementById('refreshRateSlider').value = entry.settings.refreshRate;
     document.getElementById('refreshRateLabel').textContent = entry.settings.refreshRate;
+    document.getElementById('mapNameInput').value = entry.originalName || entry.name;
     run.refreshRate = entry.settings.refreshRate;
     run.algorithm = entry.settings.algorithm;
     run.statesExpanded = entry.outcome.statesExpanded;
@@ -1232,6 +1237,22 @@
     render();
     toast('Loaded run.');
   }
+
+  function clearSavedRuns() {
+    if (!confirm('Delete all saved runs?')) return;
+    setSavedRuns([]);
+    renderSavedRuns();
+  }
+
+  document.getElementById('clearRunsBtn').addEventListener('click', clearSavedRuns);
+
+  function clearSavedMaps() {
+    if (!confirm('Delete all saved maps?')) return;
+    setSavedMaps([]);
+    renderSavedMaps();
+  } 
+
+  document.getElementById('clearMapsBtn').addEventListener('click', clearSavedMaps);
 
   // ================= Init =================
   renderToolList();
